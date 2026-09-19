@@ -14,6 +14,10 @@ class UserLogin(BaseModel):
     password: str
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
 class UserSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

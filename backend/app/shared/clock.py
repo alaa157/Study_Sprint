@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time, timezone
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
@@ -13,10 +13,20 @@ class SystemClock:
 
 
 class FakeClock:
-    """Pinned clock for tests: `today()` ignores tz and returns the fixed date."""
+    """Pinned clock for tests: `today(tz)` converts the fixed instant to `tz`.
+
+    Unlike a bare fixed date, this exercises real tz conversion, so a test
+    can pin a UTC instant where two zones disagree on the calendar date.
+    """
 
     def __init__(self, fixed: datetime | date):
-        self.fixed = fixed.date() if isinstance(fixed, datetime) else fixed
+        if isinstance(fixed, datetime):
+            instant = fixed
+        else:
+            instant = datetime.combine(fixed, time.min)
+        self.instant = (
+            instant if instant.tzinfo is not None else instant.replace(tzinfo=timezone.utc)
+        )
 
     def today(self, tz: str) -> date:
-        return self.fixed
+        return self.instant.astimezone(ZoneInfo(tz)).date()

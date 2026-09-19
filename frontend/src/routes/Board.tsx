@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { api, ApiError, type ScoreboardEntry } from "../lib/api";
+import { api, errorMessage, type ScoreboardEntry } from "../lib/api";
 
 export function Board() {
   const [params] = useSearchParams();
@@ -9,21 +9,24 @@ export function Board() {
   const [streak, setStreak] = useState<number | null>(null);
   const [error, setError] = useState("");
 
+  const load = useCallback(async (id: string) => {
+    if (!id) return;
+    setError("");
+    try {
+      setRows(await api.scoreboard(Number(id)));
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
+
   useEffect(() => {
     api
       .streak()
       .then((s) => setStreak(s.streak))
-      .catch(() => {});
-  }, []);
-
-  async function load() {
-    setError("");
-    try {
-      setRows(await api.scoreboard(Number(groupId)));
-    } catch (e) {
-      setError(e instanceof ApiError ? e.detail : "Request failed");
-    }
-  }
+      .catch((e: unknown) => setError(errorMessage(e)));
+    const preset = params.get("group");
+    if (preset) void load(preset);
+  }, [load, params]);
 
   return (
     <main>
@@ -35,7 +38,7 @@ export function Board() {
         onChange={(e) => setGroupId(e.target.value)}
         inputMode="numeric"
       />
-      <button type="button" onClick={load}>
+      <button type="button" onClick={() => void load(groupId)}>
         Load
       </button>
       {error && <p role="alert">{error}</p>}

@@ -56,4 +56,4 @@ def read_scoreboard(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return scoreboard(db, group_id, _clock)
+    return scoreboard(db, user, group_id, _clock)

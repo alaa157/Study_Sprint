@@ -21,15 +21,15 @@ def _verify_pw(password: str, hash_: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), hash_.encode("utf-8"))
 
 
-def _token(user_id: int, expires: timedelta) -> str:
+def _token(user_id: int, expires: timedelta, typ: str) -> str:
     exp = datetime.now(timezone.utc) + expires
-    return jwt.encode({"sub": str(user_id), "exp": exp}, SECRET, algorithm="HS256")
+    return jwt.encode({"sub": str(user_id), "exp": exp, "typ": typ}, SECRET, algorithm="HS256")
 
 
 def _tokens_and_view(user: User) -> dict:
     return {
-        "access_token": _token(user.id, timedelta(minutes=ACCESS_MINUTES)),
-        "refresh_token": _token(user.id, timedelta(days=REFRESH_DAYS)),
+        "access_token": _token(user.id, timedelta(minutes=ACCESS_MINUTES), "access"),
+        "refresh_token": _token(user.id, timedelta(days=REFRESH_DAYS), "refresh"),
         "user": {
             "id": user.id,
             "email": user.email,
@@ -72,3 +72,15 @@ def authenticate(token: str, db: Session) -> User:
     if not user:
         raise HTTPException(401, "BadToken")
     return user
+
+
+def refresh_tokens(db: Session, token: str) -> dict:
+    try:
+        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+        user = db.query(User).filter_by(id=int(payload["sub"])).first()
+        is_refresh = payload.get("typ") == "refresh"
+    except Exception:
+        raise HTTPException(401, "BadToken")
+    if not user or not is_refresh:
+        raise HTTPException(401, "BadToken")
+    return _tokens_and_view(user)

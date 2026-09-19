@@ -1,9 +1,9 @@
 from datetime import date
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PromiseCreate(BaseModel):
-    text: str
+    text: str = Field(min_length=1, max_length=280)
     date: date
 
 

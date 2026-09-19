@@ -26,6 +26,9 @@ def promise_today(db: Session, user: User, text: str, day: date) -> Promise:
 def complete_today(
     db: Session, user: User, day: date, clock: Clock | None = None
 ) -> Promise:
+    clock = clock or SystemClock()
+    if day > clock.today(user.timezone):
+        raise HTTPException(400, "FutureDate")
     promise = db.query(Promise).filter_by(user_id=user.id, date=day).first()
     if promise is None:
         raise HTTPException(404, "PromiseNotFound")
@@ -60,11 +63,13 @@ def done_on(db: Session, user: User, day: date) -> bool:
     )
 
 
-def scoreboard(db: Session, group_id: int, clock: Clock | None = None) -> list[dict]:
+def scoreboard(db: Session, reader: User, group_id: int, clock: Clock | None = None) -> list[dict]:
     clock = clock or SystemClock()
     group = matching.get_group(db, group_id)
     if group is None:
         raise HTTPException(404, "GroupNotFound")
+    if reader.group_id != group.id:
+        raise HTTPException(403, "NotGroupMember")
     board = []
     for member in matching.group_members(db, group.id):
         today = clock.today(member.timezone)

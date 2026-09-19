@@ -1,8 +1,6 @@
 // Typed fetch wrapper over the StudySprint HTTP API with JWT handling.
 
-const API_BASE: string =
-  (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_URL ??
-  "http://localhost:8000";
+const API_BASE: string = import.meta.env?.VITE_API_URL ?? "http://localhost:8000";
 
 const ACCESS_KEY = "ss_access";
 const REFRESH_KEY = "ss_refresh";
@@ -27,12 +25,36 @@ export class ApiError extends Error {
   }
 }
 
-async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
+export function errorMessage(e: unknown): string {
+  return e instanceof ApiError ? e.detail : "Request failed";
+}
+
+function storeAuth(auth: AuthResponse): void {
+  localStorage.setItem(ACCESS_KEY, auth.access_token);
+  localStorage.setItem(REFRESH_KEY, auth.refresh_token);
+}
+
+async function req<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
-  if (res.status === 401) {
+  if (res.status === 401 && retry && path !== "/auth/refresh") {
+    // Access token may have expired: try one silent refresh, then retry once.
+    const refresh = localStorage.getItem(REFRESH_KEY);
+    if (refresh) {
+      try {
+        const auth = await req<AuthResponse>(
+          "/auth/refresh",
+          { method: "POST", body: JSON.stringify({ refresh_token: refresh }) },
+          false,
+        );
+        storeAuth(auth);
+        return req<T>(path, init, false);
+      } catch {
+        /* refresh failed: fall through to logout */
+      }
+    }
     logout();
     throw new ApiError(401, "Unauthorized");
   }
@@ -87,8 +109,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     });
-    localStorage.setItem(ACCESS_KEY, auth.access_token);
-    localStorage.setItem(REFRESH_KEY, auth.refresh_token);
+    storeAuth(auth);
     return auth;
   },
 
@@ -97,8 +118,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
-    localStorage.setItem(ACCESS_KEY, auth.access_token);
-    localStorage.setItem(REFRESH_KEY, auth.refresh_token);
+    storeAuth(auth);
     return auth;
   },
 

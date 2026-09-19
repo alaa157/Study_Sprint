@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { api, ApiError } from "../lib/api";
+import { api, errorMessage } from "../lib/api";
 
 export function Login() {
   const navigate = useNavigate();
@@ -20,7 +20,7 @@ export function Login() {
       }
       navigate("/find");
     } catch (e) {
-      setError(e instanceof ApiError ? e.detail : "Request failed");
+      setError(errorMessage(e));
     }
   }
 
