@@ -13,3 +13,7 @@ def health():
     except Exception:
         db = "down"
     return {"status": "ok", "db": db}
+
+# --- modules ---
+from app.modules.identity.router import router as identity_router
+app.include_router(identity_router, prefix="/auth")

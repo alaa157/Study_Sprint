@@ -18,3 +18,9 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+# Register Base subclasses so metadata/create_all and Alembic see all tables.
+# Bottom import is intentional: models import Base from this module.
+from app.modules.identity import models as _identity_models  # noqa: E402,F401
+from app.modules.matching import models as _matching_models  # noqa: E402,F401
