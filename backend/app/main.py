@@ -17,3 +17,6 @@ def health():
 # --- modules ---
 from app.modules.identity.router import router as identity_router
 app.include_router(identity_router, prefix="/auth")
+
+from app.modules.matching.router import router as matching_router
+app.include_router(matching_router, prefix="/groups")
