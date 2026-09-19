@@ -26,3 +26,8 @@ app.include_router(rooms_router, prefix="/groups")
 
 from app.modules.rooms.ws import router as rooms_ws_router
 app.include_router(rooms_ws_router)
+
+from app.modules.checkins.router import board_router as scoreboard_router
+from app.modules.checkins.router import router as checkins_router
+app.include_router(checkins_router, prefix="/checkins")
+app.include_router(scoreboard_router, prefix="/groups")
