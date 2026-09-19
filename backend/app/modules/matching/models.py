@@ -1,9 +1,12 @@
-from sqlalchemy import Column, Integer, String, ARRAY, Boolean, ForeignKey, Text
+from sqlalchemy import CheckConstraint, Column, Integer, String, ARRAY, Boolean, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from app.shared.db import Base
 
 class Group(Base):
     __tablename__ = "groups"
+    __table_args__ = (
+        CheckConstraint("member_count <= max_members", name="ck_group_capacity"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)

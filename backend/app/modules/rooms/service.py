@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.modules.identity.models import User
-from app.modules.matching.models import Group
+from app.modules.matching import service as matching
 from .models import RoomSession
 
 
@@ -10,14 +10,19 @@ def remaining_s(session: RoomSession, now: datetime | None = None) -> int:
     now = now or datetime.now(timezone.utc)
     starts = session.starts_at
     if starts.tzinfo is None:
+        # Postgres timestamptz comes back aware; tolerate naive datetimes.
         starts = starts.replace(tzinfo=timezone.utc)
     return max(0, int(session.duration_s - (now - starts).total_seconds()))
 
 
 def start_session(db: Session, user: User, group_id: int, duration_s: int = 1500) -> RoomSession:
-    group = db.query(Group).filter_by(id=group_id).first()
+    group = matching.get_group(db, group_id)
     if group is None:
         raise HTTPException(404, "GroupNotFound")
+    if user.group_id != group.id:
+        raise HTTPException(403, "NotGroupMember")
+    if len(matching.group_members(db, group.id)) < matching.QUORUM_MIN:
+        raise HTTPException(409, "QuorumNotMet")
     session = RoomSession(
         group_id=group.id,
         starts_at=datetime.now(timezone.utc),

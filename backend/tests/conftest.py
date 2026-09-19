@@ -21,6 +21,15 @@ from app.shared.db import Base  # noqa: E402
 Base.metadata.create_all(_test_engine)
 
 
+def new_test_session():
+    """Independent committed session for concurrency tests.
+
+    Outside the per-test rollback transaction by design: callers must clean
+    up every row they commit.
+    """
+    return _TestSessionLocal()
+
+
 @pytest.fixture(scope="function")
 def client():
     conn = _test_engine.connect()
