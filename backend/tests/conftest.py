@@ -1,14 +1,41 @@
 import os
 
 import pytest
+import sqlalchemy
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import sessionmaker
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql+psycopg://studysprint:studysprint@localhost:5432/studysprint_test",
 )
+
+
+def _ensure_test_db(url: str) -> None:
+    """CREATE DATABASE for the test DB if missing, so `make test` works anywhere."""
+    from urllib.parse import urlparse
+
+    parts = urlparse(url)
+    dbname = parts.path.lstrip("/")
+    maint_url = url.replace(f"/{dbname}", "/postgres", 1)
+    maint = sqlalchemy.create_engine(maint_url, isolation_level="AUTOCOMMIT")
+    try:
+        with maint.connect() as conn:
+            exists = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname=:d"),
+                {"d": dbname},
+            ).first()
+            if not exists:
+                conn.execute(text(f'CREATE DATABASE "{dbname}"'))
+    except (OperationalError, ProgrammingError):
+        pass  # already exists (race) or no maint access; the connect below will tell
+    finally:
+        maint.dispose()
+
+
+_ensure_test_db(TEST_DATABASE_URL)
 
 _test_engine = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
 _TestSessionLocal = sessionmaker(bind=_test_engine, autoflush=False, autocommit=False)

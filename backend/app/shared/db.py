@@ -24,3 +24,6 @@ def get_db():
 # Bottom import is intentional: models import Base from this module.
 from app.modules.identity import models as _identity_models  # noqa: E402,F401
 from app.modules.matching import models as _matching_models  # noqa: E402,F401
+from app.modules.rooms import models as _rooms_models  # noqa: E402,F401
+from app.modules.rooms import presence as _rooms_presence  # noqa: E402,F401
+from app.modules.checkins import models as _checkins_models  # noqa: E402,F401

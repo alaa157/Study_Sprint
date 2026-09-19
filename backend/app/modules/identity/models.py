@@ -1,5 +1,5 @@
-from sqlalchemy import ForeignKey, String, ARRAY
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import String, ARRAY
+from sqlalchemy.orm import Mapped, mapped_column
 from app.shared.db import Base
 
 class User(Base):
@@ -10,6 +10,3 @@ class User(Base):
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")
     subjects: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     goals: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
-    group_id: Mapped[int | None] = mapped_column(ForeignKey("groups.id"), default=None)
-
-    group: Mapped["Group | None"] = relationship(back_populates="members", foreign_keys=[group_id])

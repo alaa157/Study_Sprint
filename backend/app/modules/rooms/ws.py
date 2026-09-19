@@ -1,42 +1,33 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from app.modules.identity.models import User
 from app.modules.identity.service import authenticate
 from app.modules.matching import service as matching
 from app.shared.db import get_db
+from app.shared.errors import DomainError
 from .models import RoomSession
-from .service import finalize_session, remaining_s
+from .service import (
+    finalize_session,
+    mark_present,
+    present_user_ids,
+    prune_presence,
+    remaining_s,
+)
 
 router = APIRouter()
 
 TICK_INTERVAL_S = 5
-# Heartbeat is a client duty (15s cadence in useRoomSocket); presence older
-# than this is considered stale when reporting `online`.
-PRESENCE_TTL = timedelta(seconds=45)
 
 _connections: dict[int, set[WebSocket]] = {}
-_presence: dict[int, dict[int, dict]] = {}
 _room_clock: dict[int, dict] = {}
 _tickers: dict[int, asyncio.Task] = {}
 
 
-def _mark_present(session_id: int, user: User) -> None:
-    _presence.setdefault(session_id, {})[user.id] = {
-        "id": user.id,
-        "email": user.email,
-        "last_seen": datetime.now(timezone.utc),
-    }
-
-
 def _participants(session_id: int, db: Session, group_id: int) -> list[dict]:
-    online = {
-        uid
-        for uid, p in _presence.get(session_id, {}).items()
-        if datetime.now(timezone.utc) - p["last_seen"] <= PRESENCE_TTL
-    }
+    online = present_user_ids(db, session_id)
     return [
         {"id": m.id, "email": m.email, "online": m.id in online}
         for m in matching.group_members(db, group_id)
@@ -100,7 +91,6 @@ async def _stop_ticker_if_empty(session_id: int) -> None:
             except asyncio.CancelledError:
                 pass
         _room_clock.pop(session_id, None)
-        _presence.pop(session_id, None)
 
 
 @router.websocket("/ws/rooms/{sid}")
@@ -109,7 +99,7 @@ async def room_ws(websocket: WebSocket, sid: int, db: Session = Depends(get_db))
     token = websocket.query_params.get("token", "")
     try:
         user = authenticate(token, db)
-    except HTTPException:
+    except DomainError:
         await websocket.close(code=4401)
         return
 
@@ -120,20 +110,20 @@ async def room_ws(websocket: WebSocket, sid: int, db: Session = Depends(get_db))
 
     await websocket.accept()
     _connections.setdefault(sid, set()).add(websocket)
-    _room_clock.setdefault(
-        sid, {"starts_at": session.starts_at, "duration_s": session.duration_s}
-    )
+    # Overwrite (not setdefault): ids restart across rolled-back tests.
+    _room_clock[sid] = {"starts_at": session.starts_at, "duration_s": session.duration_s}
     joined = False
 
     async def on_join(_msg: dict) -> None:
         nonlocal joined
         joined = True
-        _mark_present(sid, user)
+        mark_present(db, sid, user.id)
         await websocket.send_json(_snapshot(sid, db, session))
         await _ensure_ticker(sid)
 
     async def on_heartbeat(_msg: dict) -> None:
-        _mark_present(sid, user)
+        mark_present(db, sid, user.id)
+        prune_presence(db, sid)
         await _broadcast(
             sid,
             {"type": "presence", "participants": _participants(sid, db, session.group_id)},
@@ -158,5 +148,4 @@ async def room_ws(websocket: WebSocket, sid: int, db: Session = Depends(get_db))
         pass
     finally:
         _connections.get(sid, set()).discard(websocket)
-        _presence.get(sid, {}).pop(user.id, None)
         await _stop_ticker_if_empty(sid)

@@ -16,12 +16,12 @@ def test_concurrent_join_single_winner():
     """Five threads race for the last seat: exactly one wins, no overfill."""
     import threading
     import uuid
-    from fastapi import HTTPException
     from app.modules.identity.models import User
     from app.modules.identity.schemas import UserRegister
     from app.modules.identity.service import register
-    from app.modules.matching.models import Group
-    from app.modules.matching.service import join_group, propose_group
+    from app.modules.matching.models import Group, GroupMember
+    from app.modules.matching.service import group_members, join_group, propose_group
+    from app.shared.errors import DomainError
     from tests.conftest import new_test_session
 
     tag = uuid.uuid4().hex[:8]
@@ -39,7 +39,7 @@ def test_concurrent_join_single_winner():
         for email in racers:
             register(setup, UserRegister(email=email, password="secret123", timezone="UTC", subjects=[], goals=[]))
         gid = group["id"]
-        assert setup.query(User).filter_by(group_id=gid).count() == 3
+        assert len(group_members(setup, gid)) == 3
     finally:
         setup.close()
 
@@ -53,7 +53,7 @@ def test_concurrent_join_single_winner():
             barrier.wait(timeout=10)
             join_group(session, user, gid)
             outcomes.append("ok")
-        except HTTPException as e:
+        except DomainError as e:
             outcomes.append(e.detail)
         finally:
             session.close()
@@ -70,7 +70,7 @@ def test_concurrent_join_single_winner():
         assert outcomes.count("GroupFull") == 4, outcomes
         check = new_test_session()
         try:
-            assert check.query(User).filter_by(group_id=gid).count() == 4
+            assert len(group_members(check, gid)) == 4
             assert check.query(Group).filter_by(id=gid).first().member_count == 4
         finally:
             check.close()
@@ -79,13 +79,19 @@ def test_concurrent_join_single_winner():
 
         cleanup = new_test_session()
         try:
-            # Break the users.group_id <-> groups.created_by cycle first.
-            cleanup.query(User).filter(
-                User.email.like(f"%{tag}@x.com")
-            ).update({User.group_id: None}, synchronize_session=False)
-            cleanup.query(User).filter(
-                User.email.like("race%@x.com")
-            ).update({User.group_id: None}, synchronize_session=False)
+            # Membership rows reference both sides: delete them before parents.
+            member_ids = [
+                u.id
+                for u in cleanup.query(User).filter(
+                    (User.email.like(f"%{tag}@x.com"))
+                    | (User.email.like("race%@x.com"))
+                    | (User.email.like("fill%@x.com"))
+                ).all()
+            ]
+            if member_ids:
+                cleanup.query(GroupMember).filter(
+                    GroupMember.user_id.in_(member_ids)
+                ).delete(synchronize_session=False)
             cleanup.query(RoomSession).delete()
             cleanup.query(Group).delete()
             cleanup.query(User).filter(User.email.like(f"%{tag}@x.com")).delete(synchronize_session=False)

@@ -1,15 +1,19 @@
 """Seed demo data through service interfaces only (no raw SQL).
 
 Usage:
-    cd backend && python seed.py            # local dev DB
+    cd backend && python seed.py            # local dev DB (DATABASE_URL)
     make seed                                # same, inside docker compose
 
-Creates 12 users (3 timezones x 3 subject cohorts + spares), 3 groups of 4,
-1 live session on the first group, and check-ins for two members.
+Creates 12 users (3 subject cohorts x 4, rotating over 3 timezones),
+3 groups, 1 live session on the first group, and check-ins for two members.
+The third group keeps one seat open so a newcomer can join a real group
+during the demo instead of stranding in a solo queue.
+
 Idempotent: re-runs skip rows that already exist.
 """
 
-from fastapi import HTTPException
+from alembic.config import Config
+from alembic import command
 
 from app.modules.checkins import service as checkins
 from app.modules.identity import service as identity
@@ -18,7 +22,8 @@ from app.modules.identity.schemas import UserRegister
 from app.modules.matching import service as matching
 from app.modules.rooms import service as rooms
 from app.shared.clock import SystemClock
-from app.shared.db import Base, SessionLocal, engine
+from app.shared.db import SessionLocal
+from app.shared.errors import AlreadyPromised, EmailTaken
 
 PASSWORD = "secret123"
 TIMEZONES = ["UTC", "America/New_York", "Pacific/Kiritimati"]
@@ -27,6 +32,8 @@ COHORTS = [
     {"subject": "physics", "goal": "lab"},
     {"subject": "biology", "goal": "field"},
 ]
+# Cohort sizes: the last group keeps one seat open for demo newcomers.
+COHORT_SIZES = [4, 4, 3]
 
 clock = SystemClock()
 
@@ -40,54 +47,48 @@ def get_or_register(db, email: str, timezone: str, subjects: list, goals: list) 
                 subjects=subjects, goals=goals,
             ),
         )
-    except HTTPException as e:
-        if e.detail != "EmailTaken":
-            raise
+    except EmailTaken:
+        pass
     user = db.query(User).filter_by(email=email).first()
     assert user is not None
     return user
 
 
 def main() -> None:
-    Base.metadata.create_all(engine)
+    command.upgrade(Config("alembic.ini"), "head")
     db = SessionLocal()
     try:
-        users = []
+        cohorts = []
         for i, cohort in enumerate(COHORTS):
+            members = []
             for j in range(4):
                 tz = TIMEZONES[(i + j) % len(TIMEZONES)]
                 email = f"demo-{cohort['subject']}-{j}@x.com"
-                users.append(
+                members.append(
                     get_or_register(db, email, tz, [cohort["subject"]], [cohort["goal"]])
                 )
+            cohorts.append(members)
 
-        groups = []
-        for i in range(3):
-            cohort = users[i * 4:(i + 1) * 4]
-            founder = cohort[0]
+        group_ids = []
+        for i, members in enumerate(cohorts):
+            founder = members[0]
             db.refresh(founder)
-            if founder.group_id is None:
+            gid = matching.member_group_id(db, founder.id)
+            if gid is None:
                 gid = matching.propose_group(db, founder)["id"]
-            else:
-                gid = founder.group_id
-            for member in cohort[1:]:
+            for member in members[1:COHORT_SIZES[i]]:
                 db.refresh(member)
-                if member.group_id is None:
+                if matching.member_group_id(db, member.id) is None:
                     matching.join_group(db, member, gid)
-            print(f"group #{gid}: {[u.email for u in cohort]}")
-            groups.append(gid)
+            group_ids.append(gid)
+            placed = [m.email for m in matching.group_members(db, gid)]
+            print(f"group #{gid}: {placed}")
 
-        first = groups[0]
-        existing = (
-            db.query(rooms.RoomSession)
-            .filter_by(group_id=first, status="live")
-            .first()
-        )
-        if existing is None:
-            founder = db.query(User).filter_by(group_id=first).first()
+        first = group_ids[0]
+        session = rooms.live_session_for_group(db, first)
+        if session is None:
+            founder = matching.group_members(db, first)[0]
             session = rooms.start_session(db, founder, first, 1500)
-        else:
-            session = existing
         print(f"live session #{session.id} on group #{first}")
 
         members = matching.group_members(db, first)
@@ -95,8 +96,8 @@ def main() -> None:
             today = clock.today(member.timezone)
             try:
                 checkins.promise_today(db, member, "seeded focus block", today)
-            except HTTPException as e:
-                assert e.detail == "AlreadyPromised", e.detail
+            except AlreadyPromised:
+                pass
             checkins.complete_today(db, member, today, clock)
             print(f"{member.email}: streak={checkins.get_streak(db, member, clock)}")
     finally:

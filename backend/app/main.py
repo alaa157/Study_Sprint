@@ -1,8 +1,22 @@
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from app.shared.db import engine
+from app.shared.errors import DomainError
 
 app = FastAPI(title="StudySprint")
+
+
+@app.exception_handler(DomainError)
+def domain_error_handler(request, exc: DomainError):
+    return JSONResponse({"detail": exc.detail}, exc.status_code)
+
+
+@app.exception_handler(SQLAlchemyError)
+def db_error_handler(request, exc: SQLAlchemyError):
+    # 5xx responses never leak SQL or driver internals.
+    return JSONResponse({"detail": "InternalError"}, 500)
 
 @app.get("/health")
 def health():

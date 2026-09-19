@@ -29,7 +29,7 @@ def make_promise(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return promise_today(db, user, payload.text, payload.date)
+    return promise_today(db, user, payload.text, payload.date, _clock)
 
 
 @router.post("/complete", response_model=CompleteResponse)
@@ -39,7 +39,7 @@ def complete_promise(
     db: Session = Depends(get_db),
 ):
     promise = complete_today(db, user, payload.date, _clock)
-    return {"date": promise.date, "completed": promise.completed, "streak": get_streak(db, user, _clock)}
+    return {"date": promise.date, "completed": True, "streak": get_streak(db, user, _clock)}
 
 
 @router.get("/streak", response_model=StreakResponse)

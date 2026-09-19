@@ -54,7 +54,8 @@ def test_complete_without_promise_404(client, user_a):
 def test_complete_future_date_400(client, user_a):
     future = (_clock.today("UTC") + timedelta(days=2)).isoformat()
     r = client.post("/checkins/promise", json={"text": "later", "date": future}, headers=user_a)
-    assert r.status_code == 201, r.text
+    assert r.status_code == 400
+    assert r.json()["detail"] == "FutureDate"
     r = client.post("/checkins/complete", json={"date": future}, headers=user_a)
     assert r.status_code == 400
     assert r.json()["detail"] == "FutureDate"
@@ -93,14 +94,16 @@ def test_local_date_boundary_with_fake_clock():
             timezone="Pacific/Kiritimati", subjects=[], goals=[],
         ))
         user = session.query(User).filter_by(email="island@x.com").first()
-        promise_today(session, user, "fish", date(2026, 9, 19))
+        promise_today(session, user, "fish", date(2026, 9, 19), clock)
         complete_today(session, user, date(2026, 9, 19), clock)
         assert get_streak(session, user, clock) == 1
         # The UTC calendar date has no completion: proof tz mattered.
         assert not session.query(Promise).filter_by(user_id=user.id, date=date(2026, 9, 18)).first()
     finally:
+        from app.modules.checkins.models import Completion, Promise
         user = session.query(User).filter_by(email="island@x.com").first()
         if user is not None:
+            session.query(Completion).filter_by(user_id=user.id).delete()
             session.query(Promise).filter_by(user_id=user.id).delete()
             session.query(User).filter_by(email="island@x.com").delete()
             session.commit()
@@ -142,4 +145,7 @@ def test_refresh_flow(client):
     r = client.post("/auth/refresh", json={"refresh_token": token})
     assert r.status_code == 401
     r = client.post("/auth/refresh", json={"refresh_token": "BAD"})
+    assert r.status_code == 401
+    # And refresh tokens are not usable as access tokens.
+    r = client.get("/auth/me", headers={"Authorization": f"Bearer {refresh}"})
     assert r.status_code == 401

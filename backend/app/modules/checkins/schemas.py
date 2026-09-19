@@ -18,7 +18,6 @@ class PromiseSchema(BaseModel):
     user_id: int
     date: date
     text: str
-    completed: bool
 
 
 class CompleteResponse(BaseModel):

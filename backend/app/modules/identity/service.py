@@ -2,8 +2,8 @@ import bcrypt
 import jwt
 import os
 from datetime import datetime, timedelta, timezone
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from app.shared.errors import BadCredentials, BadToken, EmailTaken
 from .models import User
 from .schemas import UserLogin, UserRegister
 
@@ -42,7 +42,7 @@ def _tokens_and_view(user: User) -> dict:
 
 def register(db: Session, payload: UserRegister) -> dict:
     if db.query(User).filter_by(email=payload.email).first():
-        raise HTTPException(409, "EmailTaken")
+        raise EmailTaken()
     user = User(
         email=payload.email,
         password_hash=_hash_pw(payload.password),
@@ -59,18 +59,22 @@ def register(db: Session, payload: UserRegister) -> dict:
 def login(db: Session, payload: UserLogin) -> dict:
     user = db.query(User).filter_by(email=payload.email).first()
     if not user or not _verify_pw(payload.password, user.password_hash):
-        raise HTTPException(401, "BadCredentials")
+        raise BadCredentials()
     return _tokens_and_view(user)
 
 
 def authenticate(token: str, db: Session) -> User:
     try:
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+        if payload.get("typ", "access") != "access":
+            raise BadToken()
         user = db.query(User).filter_by(id=int(payload["sub"])).first()
+    except BadToken:
+        raise
     except Exception:
-        raise HTTPException(401, "BadToken")
+        raise BadToken()
     if not user:
-        raise HTTPException(401, "BadToken")
+        raise BadToken()
     return user
 
 
@@ -80,7 +84,7 @@ def refresh_tokens(db: Session, token: str) -> dict:
         user = db.query(User).filter_by(id=int(payload["sub"])).first()
         is_refresh = payload.get("typ") == "refresh"
     except Exception:
-        raise HTTPException(401, "BadToken")
+        raise BadToken()
     if not user or not is_refresh:
-        raise HTTPException(401, "BadToken")
+        raise BadToken()
     return _tokens_and_view(user)

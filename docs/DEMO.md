@@ -3,11 +3,14 @@
 Employer-friendly local demo. Everything runs on your machine via docker-compose;
 no cloud, no accounts, no external services.
 
-## Setup
+Verified against this repo: `make test` 23 passed, seed run twice with identical
+output, newcomer register → find → session path returns `matched` + `201`.
+
+## Setup (order matters: db first, then seed)
 
 ```bash
+make dev    # db :5432, api :8000, web :5173 (first boot builds images)
 make seed   # 12 users / 3 groups / 1 live session / check-ins (idempotent)
-make dev    # db :5432, api :8000, web :5173
 ```
 
 - API health: http://localhost:8000/health → `{"status":"ok","db":"up"}`
@@ -16,16 +19,29 @@ make dev    # db :5432, api :8000, web :5173
 
 Seeded logins (password for all: `secret123`):
 
-| Email                  | Timezone            | Group subject |
-| ---------------------- | ------------------- | ------------- |
-| demo-math-0@x.com      | UTC                 | math (#1)     |
-| demo-physics-0@x.com   | America/New_York    | physics (#2)  |
-| demo-biology-0@x.com   | Pacific/Kiritimati  | biology (#3)  |
+| Email                 | Timezone           | Cohort  |
+| --------------------- | ------------------ | ------- |
+| demo-math-0@x.com     | UTC                | math    |
+| demo-math-1@x.com     | America/New_York   | math    |
+| demo-math-2@x.com     | Pacific/Kiritimati | math    |
+| demo-math-3@x.com     | UTC                | math    |
+| demo-physics-0@x.com  | America/New_York   | physics |
+| demo-physics-1@x.com  | Pacific/Kiritimati | physics |
+| demo-physics-2@x.com  | UTC                | physics |
+| demo-physics-3@x.com  | America/New_York   | physics |
+| demo-biology-0@x.com  | Pacific/Kiritimati | biology |
+| demo-biology-1@x.com  | UTC                | biology |
+| demo-biology-2@x.com  | America/New_York   | biology |
+| demo-biology-3@x.com  | Pacific/Kiritimati | biology (ungrouped) |
+
+Groups #1 (math) and #2 (physics) are full at 4/4; group #3 (biology) sits at
+3/4 with one seat open, so a newcomer registering with matching interests joins
+a real group (`matched`) instead of stranding in a solo queue.
 
 ## Click path (2 minutes)
 
-1. **Register** a new user, or log in as `demo-math-0@x.com`.
-2. **Find group** → status `matched`, 4/4 members → **Start session**.
+1. **Register** a new user (or log in as `demo-math-0@x.com`).
+2. **Find group** → `matched` → **Start session** (quorum is 3, group has 4).
 3. **Room**: timer counts down, participants listed. Open the room in a
    second browser window: both see the same `tick`, presence updates.
 4. **Promise** `finish chapter 3`, then **Complete check-in** → streak shown.
@@ -35,13 +51,15 @@ Seeded logins (password for all: `secret123`):
 ## What to look for
 
 - Second promise for the same date → `409 AlreadyPromised`, streak unchanged.
-- Fifth join on a full group → `409 GroupFull`.
+- Fifth join on a full group (Join by ID) → `409 GroupFull`.
 - Bad/expired token on the WS → socket closes `4401`, client returns to login.
-- Streaks follow each user's **local** date (try a `Pacific/Kiritimati` user).
+- Streaks follow each user's **registered** timezone date, not UTC; completing
+  a future date → `400 FutureDate`.
+- Refresh tokens rotate via `POST /auth/refresh` and never work as access tokens.
 
 ## Full verification
 
 ```bash
-make test          # backend pytest suite (separate test DB, rolled back)
+make test          # backend pytest suite in compose (isolated test DB, rolled back)
 cd frontend && npm test && npm run build
 ```
