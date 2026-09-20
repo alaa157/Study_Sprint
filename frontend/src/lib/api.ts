@@ -1,5 +1,7 @@
 // Typed fetch wrapper over the StudySprint HTTP API with JWT handling.
 
+import { FALLBACK_ERROR, NETWORK_ERROR, friendlyMessage, normalizeDetail } from "./messages";
+
 const API_BASE: string = import.meta.env?.VITE_API_URL ?? "http://localhost:8000";
 
 const ACCESS_KEY = "ss_access";
@@ -26,7 +28,7 @@ export class ApiError extends Error {
 }
 
 export function errorMessage(e: unknown): string {
-  return e instanceof ApiError ? e.detail : "Request failed";
+  return e instanceof ApiError ? friendlyMessage(e.detail, e.status) : NETWORK_ERROR;
 }
 
 function storeAuth(auth: AuthResponse): void {
@@ -59,12 +61,16 @@ async function req<T>(path: string, init: RequestInit = {}, retry = true): Promi
     throw new ApiError(401, "Unauthorized");
   }
   if (!res.ok) {
-    let detail = res.statusText;
+    let body: unknown = null;
     try {
-      detail = (await res.json()).detail ?? detail;
+      body = await res.json();
     } catch {
       /* non-JSON error body */
     }
+    const detail = normalizeDetail(
+      (body as { detail?: unknown } | null)?.detail,
+      res.statusText || FALLBACK_ERROR,
+    );
     throw new ApiError(res.status, detail);
   }
   return (await res.json()) as T;
