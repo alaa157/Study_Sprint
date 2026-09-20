@@ -40,13 +40,35 @@ a real group (`matched`) instead of stranding in a solo queue.
 
 ## Click path (2 minutes)
 
-1. **Register** a new user (or log in as `demo-math-0@x.com`).
-2. **Find group** → `matched` → **Start session** (quorum is 3, group has 4).
-3. **Room**: timer counts down, participants listed. Open the room in a
-   second browser window: both see the same `tick`, presence updates.
-4. **Promise** `finish chapter 3`, then **Complete check-in** → streak shown.
-5. **Finalize room session** → all windows see `finalized`.
-6. **Scoreboard** (auto-loaded from the room): streaks + `done_today`.
+1. **Log in** as `demo-math-0@x.com` (`secret123`), or register a new user.
+2. **Find my study group** → the readiness badge shows "Ready to start"
+   (quorum is 3, group #1 has 4).
+3. **Start a focus sprint** → the room opens: timer in the header,
+   "Today's group commitments" above "Focus status".
+4. **Make today's promise** (`finish chapter 3`) → polite feedback
+   "Promise saved for today." A second identical promise → `409` surfaces
+   "You already made a promise today."
+5. **I'm done** → "Done! Your streak is N days." The promise button stops
+   asking; completing again is terminal, not a re-prompt.
+6. **Scoreboard** (follow the link from the room): streak summary plus each
+   member's "Complete today" / "Not complete" status text.
+7. **Finalize room session** → all windows see "Session finished".
+
+## Visible states to demo
+
+- `reconnecting`: devtools → offline for ~5s — the header shows
+  "Reconnecting… (attempt N of 3)"; after 3 tries it shows "Connection lost".
+- `finalized`: Finalize room session → "Session finished".
+- `unavailable`: open `/room/999999` in a new tab → "This session is no
+  longer available. Start a new focus sprint with your group."
+- Duplicate promise: `409` → "You already made a promise today."
+- `409 GroupFull`: join a full group by ID → "That group just filled up.
+  Try finding another group."
+- `404 PromiseNotFound`: "I'm done" before promising → "Make your promise
+  first, then mark it complete."
+- Room `groupId` is remembered in `sessionStorage` (`ss_group`), so a
+  refresh keeps the scoreboard link working.
+- The timer is server-synchronized: a >2s drift snaps to the server tick.
 
 ## What to look for
 
