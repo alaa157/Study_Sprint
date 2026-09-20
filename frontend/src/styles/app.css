@@ -61,7 +61,8 @@ button {
   cursor: pointer;
 }
 button:disabled { opacity: 0.55; cursor: not-allowed; }
-button[type="submit"] {
+button[type="submit"],
+.button-primary {
   background: var(--ss-amber);
   color: var(--ss-amber-ink);
   border-color: var(--ss-amber);

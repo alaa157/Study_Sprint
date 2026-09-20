@@ -26,3 +26,11 @@ export function groupReadiness(group: Group): Readiness {
 export function seatsLeft(group: Pick<Group, "member_count" | "max_members">): number {
   return Math.max(0, group.max_members - group.member_count);
 }
+
+/** Accepts only a positive decimal integer: protects the API from 422s on bad input. */
+export function parseGroupId(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const id = Number(trimmed);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
