@@ -1,5 +1,6 @@
 import {
   AUTH_CLOSE_CODE,
+  SESSION_UNAVAILABLE_CLOSE_CODE,
   MAX_RETRIES,
   backoffDelay,
 } from "./socket";
@@ -15,6 +16,8 @@ export interface RoomEvents {
   onTick(serverRemaining: number): void;
   onPresence(participants: Participant[]): void;
   onFinalized(): void;
+  onReconnecting(attempt: number): void;
+  onUnavailable(): void;
   onAuthFailure(): void;
   onGaveUp(): void;
 }
@@ -85,9 +88,15 @@ export class RoomSocketClient {
       this.events.onAuthFailure();
       return;
     }
+    if (code === SESSION_UNAVAILABLE_CLOSE_CODE) {
+      this.events.onUnavailable();
+      return;
+    }
     if (this.retries < MAX_RETRIES) {
       const wait = backoffDelay(this.retries);
       this.retries += 1;
+      // Notify before waiting so the UI can show "Reconnecting…" during the backoff.
+      this.events.onReconnecting(this.retries);
       await this.delay(wait);
       if (!this.closed) this.connect();
     } else {

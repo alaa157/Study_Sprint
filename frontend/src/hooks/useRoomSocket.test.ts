@@ -50,6 +50,8 @@ function events(overrides: Partial<RoomEvents> = {}): RoomEvents & { calls: stri
     onTick: () => void calls.push("tick"),
     onPresence: () => void calls.push("presence"),
     onFinalized: () => void calls.push("finalized"),
+    onReconnecting: (attempt: number) => void calls.push(`reconnecting:${attempt}`),
+    onUnavailable: () => void calls.push("unavailable"),
     onAuthFailure: () => void calls.push("auth"),
     onGaveUp: () => void calls.push("gaveup"),
     ...overrides,
@@ -125,7 +127,19 @@ describe("useRoomSocket", () => {
     }
     expect(waits).toEqual([1000, 2000, 4000]);
     expect(MockWebSocket.instances).toHaveLength(4);
-    expect(ev.calls).toEqual(["gaveup"]);
+    expect(ev.calls).toEqual(["reconnecting:1", "reconnecting:2", "reconnecting:3", "gaveup"]);
+    client.close();
+  });
+
+  it("stops immediately on 4404 because the session no longer exists", async () => {
+    const ev = events();
+    const client = new RoomSocketClient("ws://x", ev, factory);
+    client.connect();
+    MockWebSocket.instances[0].open();
+    MockWebSocket.instances[0].drop(4404);
+    await flush();
+    expect(ev.calls).toEqual(["unavailable"]);
+    expect(MockWebSocket.instances).toHaveLength(1);
     client.close();
   });
 

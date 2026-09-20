@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { logout, wsUrl } from "../lib/api";
 import { RoomSocketClient, type Participant } from "../lib/roomSocket";
+import type { RoomStatus } from "../lib/roomView";
 import { HEARTBEAT_INTERVAL_MS, needsSnap } from "../lib/socket";
 
-export type { Participant };
-export type RoomStatus = "connecting" | "live" | "finalized" | "error";
+export type { Participant } from "../lib/roomSocket";
+export type { RoomStatus } from "../lib/roomView";
 
 /** Live room socket: join → snapshot, 15s heartbeats, >2s drift snap, 3x reconnect. */
 export function useRoomSocket(sessionId: number) {
   const [remaining, setRemaining] = useState<number | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [status, setStatus] = useState<RoomStatus>("connecting");
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const remainingRef = useRef<number | null>(null);
-  const finalizedRef = useRef(false);
+  const sessionOverRef = useRef(false);
   const clientRef = useRef<RoomSocketClient | null>(null);
 
   const setBoth = useCallback((value: number) => {
@@ -24,6 +26,7 @@ export function useRoomSocket(sessionId: number) {
     const client = new RoomSocketClient(wsUrl(sessionId), {
       onSnapshot: (serverRemaining, people) => {
         setStatus("live");
+        setReconnectAttempt(0);
         setBoth(serverRemaining);
         setParticipants(people);
       },
@@ -35,8 +38,17 @@ export function useRoomSocket(sessionId: number) {
       },
       onPresence: (people) => setParticipants(people),
       onFinalized: () => {
-        finalizedRef.current = true;
+        sessionOverRef.current = true;
         setStatus("finalized");
+      },
+      onReconnecting: (attempt) => {
+        setReconnectAttempt(attempt);
+        setStatus("reconnecting");
+      },
+      onUnavailable: () => {
+        // The session id is gone: stop the local countdown and offer a way out.
+        sessionOverRef.current = true;
+        setStatus("unavailable");
       },
       onAuthFailure: () => logout(), // expired/bad token: back to login, no retry
       onGaveUp: () => setStatus("error"),
@@ -46,7 +58,7 @@ export function useRoomSocket(sessionId: number) {
 
     const heartbeat = window.setInterval(() => client.heartbeat(), HEARTBEAT_INTERVAL_MS);
     const countdown = window.setInterval(() => {
-      if (!finalizedRef.current && remainingRef.current !== null && remainingRef.current > 0) {
+      if (!sessionOverRef.current && remainingRef.current !== null && remainingRef.current > 0) {
         setBoth(remainingRef.current - 1);
       }
     }, 1000);
@@ -62,5 +74,5 @@ export function useRoomSocket(sessionId: number) {
     clientRef.current?.finalizeRoom();
   }, []);
 
-  return { remaining, participants, status, finalizeRoom };
+  return { remaining, participants, status, reconnectAttempt, finalizeRoom };
 }

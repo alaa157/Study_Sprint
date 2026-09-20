@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   commitmentState,
+  markCompleted,
   mergeCommitments,
   statusDetail,
   statusLabel,
@@ -74,6 +75,17 @@ describe("commitmentState", () => {
       tone: "waiting",
       action: null,
     });
+  });
+
+  it("keeps completion terminal after a local complete call", () => {
+    const merged = mergeCommitments(
+      [{ id: 2, email: "alex@example.com", online: true }],
+      null,
+      { id: 2 },
+      { promised: true, text: "Chapter 3 notes" },
+    );
+    expect(markCompleted(merged, 2)[0]).toMatchObject({ completed: true, completionKnown: true });
+    expect(markCompleted(merged, 99)[0].completed).toBe(false);
   });
 });
 

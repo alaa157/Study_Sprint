@@ -106,3 +106,10 @@ export function timerAriaLabel(remaining: number | null): string {
   const seconds = remaining % 60;
   return `${minutes} minute${minutes === 1 ? "" : "s"} ${seconds} second${seconds === 1 ? "" : "s"} remaining`;
 }
+
+/** After a successful completion the local user is complete even if the scoreboard is unreachable. */
+export function markCompleted(people: CommitmentInput[], userId: number): CommitmentInput[] {
+  return people.map((person) =>
+    person.id === userId ? { ...person, completed: true, completionKnown: true } : person,
+  );
+}

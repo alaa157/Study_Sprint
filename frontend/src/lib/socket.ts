@@ -12,6 +12,9 @@ export const MAX_RETRIES = 3;
 /** Close code the server sends for missing/expired tokens. */
 export const AUTH_CLOSE_CODE = 4401;
 
+/** Close code the server sends when the session id does not exist. */
+export const SESSION_UNAVAILABLE_CLOSE_CODE = 4404;
+
 export function needsSnap(
   localRemaining: number,
   serverRemaining: number,
