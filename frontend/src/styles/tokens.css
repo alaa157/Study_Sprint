@@ -1,0 +1,18 @@
+:root {
+  --ss-sage-50: #edf4f0;
+  --ss-sage-100: #dce9e0;
+  --ss-cream: #f7faf7;
+  --ss-ink: #203128;
+  --ss-muted: #597064;
+  --ss-amber: #d99b42;
+  --ss-amber-ink: #2e210e;
+  --ss-border: #b8cabe;
+  --ss-radius-card: 18px;
+  --ss-radius-control: 10px;
+  --ss-space-1: 0.25rem;
+  --ss-space-2: 0.5rem;
+  --ss-space-3: 0.75rem;
+  --ss-space-4: 1rem;
+  --ss-space-6: 1.5rem;
+  --ss-space-8: 2rem;
+}
